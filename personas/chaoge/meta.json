@@ -1,13 +1,16 @@
 {
   "name": "超哥",
   "account": "超哥超车",
+  "douyin_id": "cgcc666",
   "platform": "douyin",
-  "track": "汽车",
+  "track": "汽车评测",
   "version": "v1.0.0",
   "status": "✅ 已采集",
   "fans": "1603.1万",
   "likes": "1.6亿",
   "works": "大量",
   "bio": "理性选车买车，不花冤枉钱，所有连麦，皆为真实内容",
+  "classic": "买个der",
+  "series": ["买个der系列", "冤种说车", "连麦选车", "车型横评"],
   "description": "汽车评测连麦账号，粉丝1600万+，以敢说真话著称，帮普通人避坑买车"
 }
