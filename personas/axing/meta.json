@@ -3,7 +3,12 @@
   "account": "阿星探店",
   "platform": "douyin",
   "track": "美食",
-  "version": "v1.0.0",
-  "status": "🔄 采集中",
-  "description": "美食探店达人，以真实、接地气的探店风格著称"
+  "version": "v1.1.0",
+  "status": "✅ 已采集",
+  "fans": "14.8万",
+  "likes": "56.7万",
+  "works": "517",
+  "region": "陕西省·西安市",
+  "bio": "探寻每一座城市的美食，总有一天吃到你家楼下",
+  "description": "美食探店达人，覆盖全国各地美食，真实接地气"
 }
