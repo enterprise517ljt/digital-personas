@@ -1,0 +1,30 @@
+{
+  "name": "老邪",
+  "display_name": "老邪（正经的老邪）",
+  "douyin_id": "正经的老邪",
+  "avatar": "",
+  "bio": "打假博主，专门揭露假名媛、假富豪、假精英",
+  "location": "",
+  "ip_location": "",
+  "gender": "男",
+  "age": null,
+  "followers": null,
+  "likes": null,
+  "videos": null,
+  "following": null,
+  "verified": false,
+  "verified_badge": "",
+  "special_badge": "",
+  "tags": ["打假", "揭露", "假名媛", "假富豪", "精致女生", "打假博主"],
+  "version": "1.0.0",
+  "status": "active",
+  "last_updated": "2026-04-09",
+  "corpus_sources": [
+    "douyin搜索结果视频标题"
+  ],
+  "keywords": [
+    "打假", "假名媛", "假富豪", "假精英", "精致女生", "精致男生", "打假",
+    "揭露", "真假", "伪精致", "假人设", "造假", "摆拍", "炫富", "假象"
+  ],
+  "notes": "打假赛道，专门揭露抖音上的假精致、假人设内容"
+}
