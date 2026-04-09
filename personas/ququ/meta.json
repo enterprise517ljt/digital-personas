@@ -1,14 +1,30 @@
 {
   "name": "曲曲",
-  "nameEn": "ququ",
-  "platform": "douyin",
-  "account": "乐大喜喜（曲曲大女人）",
-  "secUid": "MS4wLjABAAAA8ja4kmo6BqANULBEVcPG7Zi1h44unUUuK1WmjCnngmUJbwgWQ2Y5br0cRMEY9rxp",
-  "channel": "douyin",
-  "version": "1.1.0",
-  "track": "female_relationships",
-  "tags": ["情感", "女性成长", "恋爱", "婚姻", "两性", "女性独立"],
-  "created": "2026-04-09",
-  "updated": "2026-04-09",
-  "description": "抖音女性情感赛道博主，以连麦直播形式解答女性在情感、恋爱、婚姻中的困惑，风格犀利直接，帮助女性看清情感本质、保持清醒。"
+  "display_name": "曲曲（乐大喜喜）",
+  "douyin_id": "36093120104",
+  "avatar": "",
+  "bio": "💎官方重要📢：4.11闺蜜联盟大会，席位有限，按报名顺序安排谨防盗版， 进主页公开👗🔗互联网亲妈👇",
+  "location": "上海·黄浦",
+  "ip_location": "以色列",
+  "gender": "女",
+  "followers": 76000,
+  "likes": 1931000,
+  "videos": 279,
+  "following": 30,
+  "verified": true,
+  "verified_badge": "官方",
+  "tags": ["女性成长", "女性智慧", "两性情感", "自媒体", "创业", "变美"],
+  "version": "2.0.0",
+  "status": "active",
+  "last_updated": "2026-04-09",
+  "corpus_sources": [
+    "douyin主页视频标题279条",
+    "douyin评论区热评",
+    "视频AI章节摘要"
+  ],
+  "keywords": [
+    "情感", "恋爱", "婚姻", "相亲", "分手", "复合", "男人", "女人", 
+    "结婚", "离婚", "出轨", "婆媳", "两性", "挽回", "脱单", "情感问题",
+    "女性成长", "女性智慧", "女生必看", "磁场", "贵人", "自媒体", "创业"
+  ]
 }

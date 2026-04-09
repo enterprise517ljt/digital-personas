@@ -1,14 +1,30 @@
 {
   "name": "蓝战非",
-  "nameEn": "lanzhanfei",
-  "platform": "douyin",
-  "account": "蓝战非",
-  "secUid": "MS4wLjABAAAAn-vTqtfLFPB8S6Q1-8QOxT9w4JhQFSNvFEho_guE2V4",
-  "channel": "douyin",
-  "version": "1.0.0",
-  "track": "travel_lifestyle",
-  "tags": ["旅游", "旅行", "自由行", "海外", "环游世界", "穷游", "一个人旅行"],
-  "created": "2026-04-09",
-  "updated": "2026-04-09",
-  "description": "抖音旅游博主，前游戏主播转型，专注于一个人旅行的纪录片式内容，去过 40+ 国家，经历丰富，真实记录旅途见闻与风险。"
+  "display_name": "蓝战非",
+  "douyin_id": "610521233",
+  "avatar": "",
+  "bio": "我可以死在远方，但不能没去过远方！",
+  "location": "湖南·长沙",
+  "ip_location": "湖南",
+  "gender": "男",
+  "age": 33,
+  "followers": 27166000,
+  "likes": 170000000,
+  "videos": 307,
+  "verified": true,
+  "verified_badge": "游戏主播",
+  "special_badge": "2025年8月精选作者",
+  "tags": ["旅行", "vlog", "环球旅行", "带妈妈看世界", "铁腚特种兵"],
+  "version": "2.0.0",
+  "status": "active",
+  "last_updated": "2026-04-09",
+  "corpus_sources": [
+    "douyin主页视频标题307条",
+    "douyin评论区热评"
+  ],
+  "keywords": [
+    "旅游", "旅行", "自由行", "签证", "护照", "机票", "酒店", 
+    "景点", "度假", "穷游", "环游世界", "出国", "冰岛", "挪威",
+    "瑞士", "南极", "非洲", "带妈妈"
+  ]
 }
