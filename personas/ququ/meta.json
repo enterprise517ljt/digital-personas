@@ -1,24 +1,14 @@
 {
   "name": "曲曲",
-  "slug": "ququ",
-  "version": "v1.0.0",
-  "created_at": "2026-04-09T00:00:00+08:00",
-  "updated_at": "2026-04-09T00:00:00+08:00",
-  "source_platforms": ["douyin", "bilibili", "xiaohongshu"],
-  "source_accounts": ["抖音@曲曲大女人"],
-  "corpus_stats": {
-    "videos": 0,
-    "lives": 0,
-    "articles": 0
-  },
-  "domain": "female_growth_relationships",
-  "profile": {
-    "gender": "女",
-    "age_range": "25-40",
-    "background": "女性成长与情感赛道，深耕女性关系经营、自我认知与成长路径",
-    "mbti_estimate": "ENFJ",
-    "content_form": "直播连麦 + 短视频观点 + 女性成长方法论"
-  },
-  "corrections_count": 0,
-  "events": []
+  "nameEn": "ququ",
+  "platform": "douyin",
+  "account": "乐大喜喜（曲曲大女人）",
+  "secUid": "MS4wLjABAAAA8ja4kmo6BqANULBEVcPG7Zi1h44unUUuK1WmjCnngmUJbwgWQ2Y5br0cRMEY9rxp",
+  "channel": "douyin",
+  "version": "1.1.0",
+  "track": "female_relationships",
+  "tags": ["情感", "女性成长", "恋爱", "婚姻", "两性", "女性独立"],
+  "created": "2026-04-09",
+  "updated": "2026-04-09",
+  "description": "抖音女性情感赛道博主，以连麦直播形式解答女性在情感、恋爱、婚姻中的困惑，风格犀利直接，帮助女性看清情感本质、保持清醒。"
 }
