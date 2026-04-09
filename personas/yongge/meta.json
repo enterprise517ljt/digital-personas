@@ -2,13 +2,19 @@
   "name": "勇哥",
   "nameEn": "yongge",
   "platform": "douyin",
-  "account": "勇哥说餐饮",
+  "account": "勇哥餐饮创业说",
+  "company": "四川三更教育科技有限公司",
   "secUid": "MS4wLjABAAAA4sQBaLJED6Zalk2SMOSJBpsQIbx0uCXRiAcuTuW3i1jnb_hC7Gw7ZOXoz9kl8fNJ",
   "channel": "douyin",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "track": "catering_entrepreneurship",
-  "tags": ["餐饮", "创业", "加盟", "实体店", "餐饮运营"],
+  "tags": ["餐饮", "创业", "加盟防坑", "餐饮选址", "快招", "小本创业"],
+  "followers": "379.3万",
+  "totalLikes": "2201.1万",
+  "contentFormat": "直播连麦 + 视频案例分析（餐饮踩坑系列已至277集）",
+  "liveSchedule": "早9:30-下午14:30（周六休息）",
+  "corpusStatus": "部分采集（主页+视频标题+AI摘要，待深入视频内容）",
   "created": "2026-04-09",
   "updated": "2026-04-09",
-  "description": "抖音餐饮创业赛道博主，以犀利的连麦直播风格帮人把脉餐饮创业项目，曝光快招加盟陷阱，帮助无数想开店的人避坑。"
+  "description": "抖音餐饮创业赛道博主，379万粉，核心是帮普通人拆解餐饮创业项目的可行性，曝光快招加盟套路，让创业者少亏钱。"
 }
