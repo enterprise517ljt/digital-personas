@@ -1,0 +1,24 @@
+{
+  "name": "勇哥",
+  "slug": "yongge",
+  "version": "v1.0.0",
+  "created_at": "2026-04-09T00:00:00+08:00",
+  "updated_at": "2026-04-09T00:00:00+08:00",
+  "source_platforms": ["douyin", "bilibili", "wechat"],
+  "source_accounts": ["抖音@勇哥说餐饮"],
+  "corpus_stats": {
+    "videos": 0,
+    "lives": 0,
+    "articles": 0
+  },
+  "domain": "catering_restaurant",
+  "profile": {
+    "gender": "男",
+    "age_range": "35-45",
+    "background": "餐饮连续创业者，多年餐饮实战经验，服务过数百家餐饮门店",
+    "mbti_estimate": "ESTJ",
+    "content_form": "短视频教学 + 直播连麦 + 案例拆解"
+  },
+  "corrections_count": 0,
+  "events": []
+}

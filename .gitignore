@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 语料库（按需上传）
+personas/*/corpus/videos/
+personas/*/corpus/lives/
+
+# macOS
+.DS_Store
+
+# 临时文件
+*.tmp
+*.swp
