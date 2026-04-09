@@ -6,9 +6,16 @@
   "company": "四川三更教育科技有限公司",
   "secUid": "MS4wLjABAAAA4sQBaLJED6Zalk2SMOSJBpsQIbx0uCXRiAcuTuW3i1jnb_hC7Gw7ZOXoz9kl8fNJ",
   "channel": "douyin",
-  "version": "2.0.0",
+  "version": "v2.1.0",
   "track": "catering_entrepreneurship",
-  "tags": ["餐饮", "创业", "加盟防坑", "餐饮选址", "快招", "小本创业"],
+  "tags": [
+    "餐饮",
+    "创业",
+    "加盟防坑",
+    "餐饮选址",
+    "快招",
+    "小本创业"
+  ],
   "followers": "379.3万",
   "totalLikes": "2201.1万",
   "contentFormat": "直播连麦 + 视频案例分析（餐饮踩坑系列已至277集）",
@@ -16,5 +23,14 @@
   "corpusStatus": "部分采集（主页+视频标题+AI摘要，待深入视频内容）",
   "created": "2026-04-09",
   "updated": "2026-04-09",
-  "description": "抖音餐饮创业赛道博主，379万粉，核心是帮普通人拆解餐饮创业项目的可行性，曝光快招加盟套路，让创业者少亏钱。"
+  "description": "抖音餐饮创业赛道博主，379万粉，核心是帮普通人拆解餐饮创业项目的可行性，曝光快招加盟套路，让创业者少亏钱。",
+  "signature_phrases": [
+    "加盟是坑，95%都是韭菜",
+    "不怕富二代吃喝嫖赌，就怕富二代想证明自己",
+    "选址决定生死",
+    "你这是被加盟商割了啊",
+    "先打工再创业，别上来就梭哈",
+    "止损是智慧，不是失败",
+    "脚踏实地的富二代才能守住家业"
+  ]
 }
