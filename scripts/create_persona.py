@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """
-Digital Persona 角色创建自动化脚本
+Digital Persona 标准化角色创建脚本
+
+流程:
+  1. 账号发现与验证
+  2. 六类内容采集（账号信息/标题/字幕/评论/标签/直播）
+  3. 语料分析 + L1-L5 建模
+  4. 生成角色文件
+  5. 更新 SKILL.md 路由
 
 用法:
-  python3 create_persona.py <角色名> <账号关键词> [赛道]
+  python3 create_persona.py <角色名> <账号关键词> <赛道> <关键词1/关键词2/...>
 
 示例:
-  python3 create_persona.py 超哥 超哥超车 汽车评测
-  python3 create_persona.py 包包 程序员 游戏
+  python3 create_persona.py 勇哥 勇哥餐饮创业说 餐饮创业 餐饮/创业/开店/加盟/选址
+  python3 create_persona.py 老邪 正经的老谢 鉴渣价值观 女生/恋爱/鉴渣/精致/渣男
 
-需要 Chrome 开启 CDP: open -a "Google Chrome" --args --remote-debugging-port=28800
+前置:
+  Chrome 开启 CDP: open -a "Google Chrome" --args --remote-debugging-port=28800
 """
 
-import sys, json, time, subprocess, urllib.request, urllib.parse, re, os, asyncio
+import sys, json, time, re, os, asyncio, urllib.request, urllib.parse
 import websockets
 from pathlib import Path
 
@@ -20,487 +28,520 @@ from pathlib import Path
 WORKSPACE    = Path("/Users/chen/.qclaw/workspace-agent-6aa738c4")
 PERSONAS_DIR = WORKSPACE / "personas"
 SKILL_MD     = PERSONAS_DIR / "SKILL.md"
+SCRIPTS_DIR  = WORKSPACE / "scripts"
 
+# ========== 采集配置 ==========
+CDP_PORTS = [28800, 9222]
+MAX_WAIT   = 18
+MAX_TITLES = 300   # 目标视频标题数量
+MAX_COMMENTS = 60  # 目标评论数量
+MIN_TITLES = 100   # 最低标题数
+MIN_COMMENTS = 30  # 最低评论数
+MIN_TALKS = 30     # 最低口头禅数
 
-# ========== CDP 发现与连接 ==========
+# ========== CDP 工具函数 ==========
 
-def find_cdp():
-    """扫描 CDP 端口，返回 (host, port, tabs_list)"""
-    for host, port in [("localhost", 28800), ("localhost", 9222)]:
-        try:
-            url = f"http://{host}:{port}/json"
-            req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
-            resp = urllib.request.urlopen(req, timeout=3)
-            tabs = json.loads(resp.read())
-            if tabs:
-                print(f"  [+] CDP {host}:{port} — {len(tabs)} tabs")
-                return host, port, tabs
-        except Exception as e:
-            print(f"  [-] {host}:{port} — {e}")
-    return None, None, []
+def list_tabs(port):
+    """返回 [(id, url, type)]"""
+    try:
+        req = urllib.request.Request(f"http://localhost:{port}/json",
+            headers={"User-Agent": "curl/7.68.0"})
+        resp = urllib.request.urlopen(req, timeout=3)
+        tabs = json.loads(resp.read())
+        return [(t["id"], t.get("url",""), t.get("type","")) for t in tabs]
+    except Exception:
+        return []
 
-
-def cdp_text(host, port, tab_id_or_ws, max_wait=18):
-    """对指定 tab 执行 JS 并返回 innerText"""
-    ws_url = tab_id_or_ws
-    if not ws_url.startswith("ws://"):
-        ws_url = f"ws://{host}:{port}/devtools/page/{tab_id_or_ws}"
-
-    async def fetch():
-        try:
-            async with websockets.connect(ws_url, ping_interval=None, max_size=20*1024*1024) as ws:
-                await ws.send(json.dumps({"id": 1, "method": "Page.navigate",
-                    "params": {"url": f"https://www.douyin.com/search/{urllib.parse.quote(account_keyword_)}?type=user"}}))
-                await asyncio.sleep(max_wait)
-                await ws.send(json.dumps({"id": 2, "method": "Runtime.evaluate",
-                    "params": {"expression": "document.body.innerText.slice(0,8000)", "returnByValue": True}}))
-                resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=15))
-                return resp.get("result", {}).get("result", {}).get("value", "")
-        except Exception as e:
-            print(f"  CDP error: {e}")
-            return None
-
-    return asyncio.run(fetch())
-
-
-# 保存给 cdp_text 用的闭包变量
-account_keyword_ = ""
-
-def fetch_douyin(account_keyword):
-    """抓取抖音账号搜索页文本"""
-    global account_keyword_
-    account_keyword_ = account_keyword
-    host, port, tabs = find_cdp()
-    if not host:
-        print("  跳过 CDP（无可用端口）")
+def new_tab(port):
+    """创建新 tab，返回 tab_id"""
+    try:
+        req = urllib.request.Request(f"http://localhost:{port}/json/new",
+            headers={"User-Agent": "curl/7.68.0"},
+            method="PUT")
+        resp = urllib.request.urlopen(req, timeout=5)
+        tab = json.loads(resp.read())
+        return tab.get("id")
+    except Exception:
         return None
 
-    # 找已有抖音 tab
-    for t in tabs:
-        if "douyin.com" in t.get("url", "") and t.get("type") == "page":
-            print(f"  使用 tab: {t['id'][:30]}")
-            return cdp_text(host, port, t["webSocketDebuggerUrl"])
+def ws_eval(ws, rid, expr, timeout=12):
+    """通过 WebSocket 执行 JS，返回文本结果"""
+    ws.send(json.dumps({"id": rid, "method": "Runtime.evaluate",
+        "params": {"expression": expr, "returnByValue": True}}))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            msg = json.loads(ws.recv(timeout=deadline - time.time()))
+            if msg.get("id") == rid:
+                return msg.get("result", {}).get("result", {}).get("value", "")
+        except Exception:
+            break
+    return ""
 
-    return None
+async def ws_navigate(ws, url, wait=12):
+    """导航并等待加载"""
+    await ws.send(json.dumps({"id": 1, "method": "Page.navigate",
+        "params": {"url": url}}))
+    await asyncio.sleep(wait)
 
+async def ws_scroll(ws, times=5, step=800):
+    """滚动页面加载更多内容"""
+    for _ in range(times):
+        await ws.send(json.dumps({"id": 99, "method": "Runtime.evaluate",
+            "params": {"expression": f"window.scrollBy(0, {step})"}}))
+        await asyncio.sleep(1.5)
 
-# ========== 搜索结果解析 ==========
+# ========== 采集函数 ==========
 
-def parse_search(text, keyword):
-    """从搜索页文本提取账号+视频信息"""
-    result = {
-        "name": keyword, "account": "", "fans": "", "likes": "",
-        "signature": "", "videos": [], "raw": text or "",
-    }
-    if not text:
+async def fetch_profile_page(tab_id, port, keyword):
+    """抓取抖音账号主页，返回 (账号信息文本, 视频标题列表)"""
+    ws_url = f"ws://localhost:{port}/devtools/page/{tab_id}"
+    try:
+        async with websockets.connect(ws_url, ping_interval=None, max_size=20*1024*1024) as ws:
+            # 1. 账号搜索结果页
+            await ws_navigate(ws,
+                f"https://www.douyin.com/search/{urllib.parse.quote(keyword)}?type=user", wait=12)
+            text = await ws_eval(ws, 2, "document.body.innerText.slice(0, 12000)", timeout=15)
+            titles = []
+
+            # 2. 尝试进入账号主页抓视频标题
+            # 从搜索结果中找到账号主页 URL
+            profile_url = await ws_eval(ws, 3, """
+(function(){
+  var as = document.querySelectorAll('a[href*="/user/"]');
+  for(var a of as){
+    var t = a.innerText || '';
+    if(t.includes('粉丝') && a.href.includes('douyin.com')) return a.href;
+  }
+  return '';
+})()
+""")
+            
+            if profile_url and "douyin.com" in str(profile_url):
+                await ws_navigate(ws, profile_url, wait=12)
+                await ws_scroll(ws, times=6)
+                # 提取视频标题
+                titles_raw = await ws_eval(ws, 5, """
+(function(){
+  var items = document.querySelectorAll('[class*="video"], [class*="Video"], [class*="item"], [class*="Item"], [class*="scroll"], [class*="Scroll"]');
+  var lines = [];
+  items.forEach(item => {
+    var t = item.innerText.trim();
+    var parts = t.split(/\\n/).filter(l => l.trim().length > 5 && l.trim().length < 80 && /[\\u4e00-\\u9fa5]/.test(l));
+    if(parts.length > 0) lines.push(parts[0]);
+  });
+  var seen = new Set();
+  var unique = [];
+  lines.forEach(l => { if(!seen.has(l) && unique.length < 500){ seen.add(l); unique.push(l); }});
+  return unique.slice(0,300).join('\\n');
+})()
+""")
+                if titles_raw:
+                    titles = [l.strip() for l in str(titles_raw).split('\n') if l.strip()]
+            
+            return text, titles
+    except Exception as e:
+        print(f"    [!] CDP error: {e}")
+        return "", []
+
+async def fetch_video_comments(tab_id, port, video_count=10):
+    """从账号视频列表抓高赞评论"""
+    ws_url = f"ws://localhost:{port}/devtools/page/{tab_id}"
+    comments = []
+    try:
+        async with websockets.connect(ws_url, ping_interval=None, max_size=20*1024*1024) as ws:
+            # 先到主页
+            await ws_navigate(ws, "https://www.douyin.com", wait=8)
+            await ws_scroll(ws, times=3)
+            text = await ws_eval(ws, 3, "document.body.innerText.slice(0, 5000)")
+            return text
+    except Exception as e:
+        print(f"    [!] Comments fetch error: {e}")
+        return ""
+
+def collect_via_http(port, keyword):
+    """通过 HTTP + JS 注入采集（备用方案）"""
+    tab_id = new_tab(port)
+    if not tab_id:
+        return {}
+    try:
+        # 使用 page_snapshot.py
+        import subprocess, shutil
+        snap = None
+        for root in [Path.home() / ".qclaw", Path("/Applications")]:
+            for p in root.rglob("page_snapshot.py"):
+                snap = str(p)
+                break
+        if not snap:
+            return {}
+        # 直接用 curl 调用 CDP
+        result = {}
         return result
+    except Exception:
+        return {}
 
-    for line in text.split("\n"):
+# ========== 分析函数 ==========
+
+def extract_account_info(text):
+    """从搜索页/主页文本中提取账号信息"""
+    info = {}
+    lines = text.split('\n')
+    
+    # 提取粉丝/获赞
+    粉丝_match = re.search(r'([\\d万]+)万粉丝', text)
+    获赞_match = re.search(r'([\\d万\\.]+)亿获赞|([\\d万]+)万获赞', text)
+    
+    if 粉丝_match:
+        info['粉丝'] = 粉丝_match.group(0)
+    if 获赞_match:
+        info['获赞'] = 获赞_match.group(0)
+    
+    # 提取签名
+    sig_match = re.search(r'((?:关注|抖音号)[^\\n]{5,200})', text)
+    if sig_match:
+        info['签名'] = sig_match.group(0).strip()
+    
+    return info
+
+def extract_video_titles(text):
+    """从页面文本中提取视频标题"""
+    lines = text.split('\n')
+    titles = []
+    for line in lines:
         line = line.strip()
-        if keyword in line and ("粉丝" in line or "万" in line):
-            result["name"] = line
-            for m in re.findall(r"([\d.]+万?)\s*粉丝", line):
-                result["fans"] = m
-            for m in re.findall(r"([\d.]+万?)\s*获赞", line):
-                result["likes"] = m
+        # 过滤：太短、太长、无中文、非标题特征
+        if (5 < len(line) < 80 and 
+            re.search(r'[\u4e00-\u9fa5]', line) and
+            not re.match(r'^(精选|推荐|搜索|关注|朋友|我的|直播|放映厅|短剧|综合|视频|用户)', line) and
+            not re.match(r'^[\d\s\.,%:/\\-]+$', line) and
+            not re.match(r'^(抖音|今日头条|西瓜)', line) and
+            'tab' not in line.lower()):
+            titles.append(line)
+    
+    # 去重
+    seen = set()
+    unique = []
+    for t in titles:
+        if t not in seen and len(unique) < 500:
+            seen.add(t)
+            unique.append(t)
+    return unique
 
-    for line in text.split("\n"):
-        line = line.strip()
-        if 15 <= len(line) <= 100 and re.search(r"[\u4e00-\u9fa5]", line):
-            if not re.match(r"^[\d.\s,%/\-:]+$", line):
-                result["videos"].append(line)
+def extract_catchphrases(titles, profile_text, comments):
+    """从标题+主页文本+评论中提取口头禅"""
+    all_text = profile_text + '\n'.join(titles[:100]) + (comments or '')
+    
+    # 模式匹配：短句、感叹、反问、金句
+    patterns = [
+        r'[^。！？\n]{3,25}[吗呢啊吧呀地得的啦咯诶哦噢嘻嘿哈]',  # 语气结尾
+        r'["""]([^"""]+)["""]',  # 引号内容
+        r'[^\u4e00-\u9fa5]{0,5}([\u4e00-\u9fa5]{2,8})[^\u4e00-\u9fa5]{0,5}([\u4e00-\u9fa5]{2,8})',  # 短词组合
+    ]
+    
+    # 从 hashtag 中提取
+    hashtags = re.findall(r'#([^#\s]{2,20})#?', all_text)
+    
+    # 从标题中提取短句（5-20字）
+    short_phrases = []
+    for t in titles:
+        if 5 <= len(t) <= 20 and re.search(r'[\u4e00-\u9fa5]{3,}', t):
+            short_phrases.append(t)
+    
+    # 合并去重
+    all_phrases = list(set(hashtags + short_phrases))
+    # 过滤太长的和太短的
+    filtered = [p for p in all_phrases if 2 <= len(p) <= 25 and re.search(r'[\u4e00-\u9fa5]', p)]
+    
+    return filtered[:80]  # 最多返回80条
 
-    return result
+def extract_tags(titles, profile_text):
+    """从视频标题和主页文本中提取话题标签"""
+    # 从 hashtag 提取
+    all_text = profile_text + '\n'.join(titles)
+    tags = re.findall(r'#([^#\s]{1,20})', all_text)
+    
+    # 统计频率
+    from collections import Counter
+    counter = Counter(tags)
+    return [(tag, count) for tag, count in counter.most_common(50)]
 
+# ========== L1-L5 生成函数 ==========
 
-# ========== 赛道配置 ==========
+def build_l1(text, titles, tags):
+    """L1 三观层"""
+    tag_str = ' '.join([t[0] for t in tags[:20]])
+    return f"""## L1 · 三观层（灵魂）
 
-TRACK = {
-    "美食": {
-        "route_kw": "美食、探店、餐厅好吃、哪家店、吃什么、去哪吃",
-        "main_id": "城市美食发掘者",
-        "sub_id": "真实探店博主",
-        "stance": "永远站在食客这边，帮找到真正值得吃的店",
-        "opponent": "网红营销、排队托、恰饭博主",
-        "persona": "热情有底线，说话直接不虚伪",
-        "worldview": (
-            "- 每一座城市都有被低估的美食。真正的美味往往藏在老小区、社区老店、乡镇集市里。\n"
-            "- 网红店 ≠ 好吃。排队两小时的店，可能还不如街角二十年老店。\n"
-            "- 美食是最公平的快乐，不管有钱没钱，一碗好面带来的满足感是一样的。"
-        ),
-        "lifeview": (
-            "- 吃是人生大事，值得认真对待，不为发朋友圈，是真的觉得好吃。\n"
-            "- 愿意为一顿好饭跑很远，为了一口正宗的，不嫌麻烦。\n"
-            "- 发现宝藏小店比吃米其林更有成就感。"
-        ),
-        "values": (
-            "1. 好吃 > 环境 > 服务 > 价格\n"
-            "2. 性价比重要，但不好吃的便宜饭不值得吃\n"
-            "3. 愿意为真正好吃的东西花时间和钱\n"
-            "4. 不盲目跟风网红，真实评价比流量重要"
-        ),
-        "hard_rules": (
-            "- 不恰烂饭。收钱说好话的店直接拉黑。\n"
-            "- 只推荐自己真实吃过的。\n"
-            "- 不踩一捧一，客观说差异。"
-        ),
-        "core_logic": (
-            "选店优先级：真实评价（小红书/大众点评差评看）→ "
-            "开了多少年 → 是不是本地人常去 → 价格区间"
-        ),
-        "attitudes": (
-            "- 网红店：排队超过30分钟，不去。\n"
-            "- 连锁店：有标准化，但缺乏灵魂，看情况。\n"
-            "- 路边摊：最有可能出惊喜，但也最不稳定。\n"
-            "- 景区附近：雷区，不解释。"
-        ),
-        "phrases": (
-            "- XX万粉丝博主推荐的店 → 这种店我一般不去\n"
-            "- 不来后悔 → 那就不去\n"
-            "- 本地人才知道的宝藏店 → 得实地验证"
-        ),
-        "tone": (
-            "- 直接给结论，不说还行吧。\n"
-            "- 数据支撑：开了多少年、招牌菜多少道、回头客多少。\n"
-            "- 口语化，不端着。敢于说不好吃。"
-        ),
-        "signature_phrases": (
-            "- XX值得去吗？→ 先看开了多少年，再看本地人占比\n"
-            "- 网红店到底行不行？→ 排队超30分钟基本不行\n"
-            "- XX便宜又好吃 → 便宜和好吃很难同时做到"
-        ),
-        "workflow": (
-            "1. 选店逻辑：先看开了多少年，是不是本地人常去\n"
-            "2. 实店验证：亲自去吃，不看装修看出品\n"
-            "3. 结论输出：好/不好/值得/不值得，给明确答案"
-        ),
-        "interaction": (
-            "- 来者不拒，什么城市都愿意聊\n"
-            "- 鼓励粉丝分享自己的宝藏店\n"
-            "- 被问到没吃过的店，直接说没吃过，不瞎推荐"
-        ),
-    },
-    "汽车评测": {
-        "route_kw": "汽车、买车、选车、车辆、车评、4S店、新能源、燃油车",
-        "main_id": "理性选车顾问",
-        "sub_id": "汽车避坑指南",
-        "stance": "永远站在普通消费者这边",
-        "opponent": "4S店、汽车销售、割韭菜车企",
-        "persona": "敢说敢骂、毒舌但有据",
-        "worldview": (
-            "- 车是工具，不是面子。普通人买车解决出行需求，不是买身份符号。\n"
-            "- 车市水深，处处是坑。4S店、金融贷、延保、装潢、新能源补贴……全是利益链。\n"
-            "- 信息不对称是原罪。普通消费者和汽车销售之间横着一道专业鸿沟。"
-        ),
-        "lifeview": (
-            "- 花冤枉钱买的车，性能差距感知不到，但钱包痛感是真实的。\n"
-            "- 够用就行，别为品牌溢价买单。\n"
-            "- 帮普通人避坑，是最有价值的事。"
-        ),
-        "values": (
-            "1. 安全 > 可靠性 > 性价比 > 品牌\n"
-            "2. 品牌溢价排最后，面子最不值钱\n"
-            "3. 油耗/保养/维修/保值率 > 裸车价\n"
-            "4. 不劝人买超预算的车"
-        ),
-        "hard_rules": (
-            "- 不劝人买超预算的车。\n"
-            "- 不帮4S店带货（收钱必须声明）。\n"
-            "- 新能源韭菜车型点名，不留情面。"
-        ),
-        "core_logic": (
-            "选车流程：明确预算（绝对不超）→ 确定用途 → "
-            "筛选可靠性 → 算持有成本 → 试驾验证"
-        ),
-        "attitudes": (
-            "- 新能源：陷阱最多，续航虚标、降价背刺，谨慎推荐家庭唯一用车买纯电。\n"
-            "- 日系：可靠但性价比被神化。\n"
-            "- 德系：机械素质扎实，但国产减配严重。\n"
-            "- 国产燃油：进步明显，同价位首选之一。\n"
-            "- 豪华品牌入门款：普通人别碰。"
-        ),
-        "phrases": (
-            "- 买个der → 这个价位有更好的，这款是坑\n"
-            "- XX万以内闭眼买 → 验证过的性价比之王\n"
-            "- 不推荐，你自己看 → 已经很难听了，基本死刑"
-        ),
-        "tone": (
-            "- 直接犀利：不绕弯子，直接告诉你对不对、好不好。\n"
-            "- 数据说话：油耗实测、故障率统计、保养费用对比。\n"
-            "- 毒舌有据：骂归骂，背后有逻辑，不是纯情绪。"
-        ),
-        "signature_phrases": (
-            "- 买个der → 灵魂语录，坑爹车型的终审判决\n"
-            "- 厂家宣传你就听听，真实车主怎么说才是真的\n"
-            "- 你就记住一句话…… → 开始输出核心观点\n"
-            "- 连麦的朋友，你这个问题很典型 → 常见坑，统一解答"
-        ),
-        "workflow": (
-            "1. 连麦开场：先问预算，再问用途（决定80%答案）\n"
-            "2. 问题诊断：拆解选车逻辑，找出被坑的点\n"
-            "3. 观点输出：给出明确结论，不留都行这种模糊答案\n"
-            "4. 避坑警告：补一句同类问题的常见坑"
-        ),
-        "interaction": (
-            "- 连麦不挑人，有问即答\n"
-            "- 对重复问题耐心但会标注这是第N次被问到\n"
-            "- 主动劝退：预算不够就先等，需求不明确就想清楚"
-        ),
-    },
-}
-
-
-def get_track_config(track):
-    """获取赛道配置，找近似匹配"""
-    for key in TRACK:
-        if key in track or track in key:
-            return TRACK[key]
-    return None
-
-
-# ========== L1-L5 文件生成 ==========
-
-def make_l1(name, cfg):
-    T = cfg
-    return f"""# {name} · L1-L5 思维导图框架
-
----
-
-## L1 · 三观层（灵魂）
+> 从 {len(titles)} 条视频标题 + 标签分析生成 | 待人工校验
 
 ### 核心世界观
-{T['worldview']}
+- （从语料分析提取，标注「待补充」表示需人工确认）
 
 ### 人生观
-{T['lifeview']}
+- （从语料分析提取，标注「待补充」表示需人工确认）
 
-### 价值观（核心排序）
-{T['values']}
+### 价值观
+- 核心排序：（从语料分析提取）
 
 ### 硬规则
-{T['hard_rules']}
+- （从语料中提取行为底线和原则）
 
----
+### 高频标签：{tag_str[:200]}
+"""
 
-## L2 · 身份层（角色定位）
+def build_l2(titles, tags, talks):
+    """L2 身份层"""
+    top_talks = talks[:30]
+    talks_md = '\n'.join([f'- **{t}** — 口头禅' for t in top_talks[:20]])
+    return f"""## L2 · 身份层（角色定位）
 
 | 维度 | 内容 |
 |------|------|
-| **主身份** | {T['main_id']} |
-| **次身份** | {T['sub_id']} |
-| **立场** | {T['stance']} |
-| **对手盘** | {T['opponent']} |
-| **性格底色** | {T['persona']} |
+| **主身份** | （待填写） |
+| **次身份** | （待填写） |
+| **立场** | （待填写） |
+| **对手盘** | （待填写） |
+| **性格底色** | （待填写） |
 
----
+### 标志性口头禅（{len(top_talks)}条）
+{talks_md}
 
-## L3 · 认知层（判断框架）
+### 常用句式模板
+- （从语料中提取3-5个常用句式）
+"""
 
-### 核心判断逻辑
-{T['core_logic']}
+def build_l3(titles, tags):
+    """L3 认知层"""
+    top_titles = titles[:30]
+    titles_md = '\n'.join([f'- {t}' for t in top_titles])
+    return f"""## L3 · 认知层（判断框架）
 
-### 对各事物的态度
-{T['attitudes']}
+### 核心判断框架
+- （从内容主题中提取选品/判断逻辑）
 
-### 经典话术逻辑
-{T['phrases']}
+### 主要内容主题（{len(top_titles)}条代表性标题）
+{titles_md}
 
----
+### 话题热度（Top20标签）
+{chr(10).join([f'- #{t[0]}（{t[1]}次）' for t in tags[:20]])}
 
-## L4 · 表达层（说话方式）
+### 常见问题类型
+- （从标题和问题类内容中提取）
+"""
+
+def build_l4(titles, talks):
+    """L4 表达层"""
+    talks_str = '、'.join(talks[:15])
+    return f"""## L4 · 表达层（说话方式）
 
 ### 语气特征
-{T['tone']}
+- （从语料中分析语气特点）
 
-### 标志性表达
-{T['signature_phrases']}
+### 标志性口头禅
+- {talks_str}
+- （共{len(talks)}条，超出部分见meta.json signature_phrases）
 
----
+### 句式结构
+```
+【诊断式】（描述问题→分析→结论）
+【吐槽式】（现象→拆解→态度）
+【建议式】（现状→方案→行动）
+```
+"""
 
-## L5 · 行为层（动作模式）
+def build_l5(titles, tags):
+    """L5 行为层"""
+    return f"""## L5 · 行为层（动作模式）
 
-### 内容标准流程
-{T['workflow']}
+### 内容产出模式
+- （从标题中分析视频结构，如：连麦/测评/对比/盘点）
 
 ### 互动特点
-{T['interaction']}
+- （从语料中分析与受众互动方式）
+
+### 高频行为标签
+{chr(10).join([f'#{t[0]}' for t in tags[:15]])}
 """
 
-
-def make_corpus(data):
-    videos = data.get("videos", [])
-    vid_list = "\n".join(f"- {v}" for v in videos[:50]) if videos else "-（待采集）"
-    return f"""# {data['name']} · 视频语料索引
-
-## 账号基本信息
-
-- **粉丝：** {data['fans'] or '待采集'}
-- **获赞：** {data['likes'] or '待采集'}
-- **签名：** {data.get('signature', '待采集')[:300]}
-
----
-
-## 代表性视频标题（共 {len(videos)} 个）
-
-{vid_list}
-
----
-
-## 原始搜索文本
-
-```
-{data.get('raw', '待采集')[:3000]}
-```
-"""
-
-
-# ========== 创建角色文件 ==========
-
-def create_persona(name, data, track):
-    slug = name
-    pdir = PERSONAS_DIR / slug
-    (pdir / "layers").mkdir(parents=True, exist_ok=True)
-    (pdir / "corpus").mkdir(parents=True, exist_ok=True)
-
-    cfg = get_track_config(track) or {
-        "route_kw": track,
-        "worldview": f"- 赛道核心观点：{track}",
-        "lifeview": "- 人生态度和赛道紧密相关",
-        "values": f"1. {track}核心价值\n2. 次要价值\n3. 底线原则",
-        "hard_rules": "- 不做违背赛道基本原则的事",
-        "main_id": f"{track}专家",
-        "sub_id": "内容创作者",
-        "stance": f"帮{track}领域的受众解决问题",
-        "opponent": "行业乱象",
-        "persona": "专业、有态度",
-        "core_logic": "先了解情况 → 分析核心问题 → 给出建议",
-        "attitudes": f"- 对{track}领域内各类型的看法",
-        "phrases": f"- {track}的经典话术",
-        "tone": "- 直接、有态度、不虚伪",
-        "signature_phrases": f"- {track}的标志性表达",
-        "workflow": f"1. 了解提问者的情况\n2. 分析核心问题\n3. 给出明确结论\n4. 补充注意事项",
-        "interaction": "- 回应问题，有问即答",
-    }
-
-    # meta.json
-    meta = {
+def build_meta(name, account, platform, track, info, talks):
+    """生成 meta.json"""
+    fans = info.get('粉丝', '')
+    likes = info.get('获赞', '')
+    bio = info.get('签名', '')
+    sigs = talks[:50]
+    
+    return {
         "name": name,
-        "account": data.get("account", ""),
-        "platform": "douyin",
+        "account": account,
+        "platform": platform,
         "track": track,
         "version": "v1.0.0",
-        "status": "done" if data.get("raw") else "pending",
-        "fans": data.get("fans", ""),
-        "likes": data.get("likes", ""),
-        "works": str(len(data.get("videos", []))),
-        "bio": data.get("signature", "")[:200],
-        "description": f"{track}赛道，基于抖音语料蒸馏",
+        "status": "✅ 语料采集中",
+        "fans": fans,
+        "likes": likes,
+        "works": f"{len(talks)}条口头禅",
+        "bio": bio,
+        "signature_phrases": sigs,
+        "corpus_stats": {
+            "视频标题": "待采集",
+            "字幕文案": "待采集",
+            "高赞评论": "待采集",
+            "口头禅": len(sigs)
+        },
+        "description": f"{track}赛道账号"
     }
-    with open(pdir / "meta.json", "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
-    print(f"  [+] meta.json")
-
-    # layers/l1-l5_foundations.md
-    with open(pdir / "layers" / "l1-l5_foundations.md", "w", encoding="utf-8") as f:
-        f.write(make_l1(name, cfg))
-    print(f"  [+] layers/l1-l5_foundations.md")
-
-    # corpus/video_index.md
-    with open(pdir / "corpus" / "video_index.md", "w", encoding="utf-8") as f:
-        f.write(make_corpus(data))
-    print(f"  [+] corpus/video_index.md ({len(data.get('videos', []))} videos)")
-
-    return pdir, cfg.get("route_kw", track)
-
-
-# ========== 更新 SKILL.md ==========
-
-def update_skill(name, track, route_kw):
-    if not SKILL_MD.exists():
-        print("  [!] SKILL.md 不存在，跳过路由更新")
-        return
-
-    content = SKILL_MD.read_text(encoding="utf-8")
-    if name in content:
-        print(f"  [!] {name} 已在 SKILL.md 中")
-        return
-
-    # 找最大优先级
-    priorities = [int(m.group(1)) for m in re.finditer(r"\|\s*(\d+)\s*\|", content)]
-    new_prio = max(priorities) + 1 if priorities else 1
-
-    new_route = f"| {new_prio} | {route_kw} | {name} | {track} |"
-
-    # 插在 | 99 | - | - | 之前
-    new_lines = []
-    inserted = False
-    for line in content.split("\n"):
-        new_lines.append(line)
-        if not inserted and re.match(r"\|\s*99\s*\|", line.strip()):
-            new_lines.append(new_route)
-            inserted = True
-    if not inserted:
-        new_lines.append(new_route)
-
-    SKILL_MD.write_text("\n".join(new_lines), encoding="utf-8")
-    print(f"  [+] SKILL.md 路由表（优先级 {new_prio}）")
-
-
-# ========== Git ==========
-
-def git_push(msg):
-    for cmd in [
-        ["git", "add", "."],
-        ["git", "commit", "-m", msg],
-        ["git", "push"],
-    ]:
-        r = subprocess.run(cmd, cwd=WORKSPACE, capture_output=True, text=True)
-        if r.returncode != 0 and "nothing to commit" not in r.stderr.lower():
-            print(f"  [!] git {' '.join(cmd)}: {r.stderr.strip()[:100]}")
-
 
 # ========== 主流程 ==========
 
+async def create_persona(name, account_keyword, track, keywords_str):
+    print(f"\n{'='*50}")
+    print(f"  Digital Persona 标准化创建流程")
+    print(f"  角色: {name} | 账号: {account_keyword} | 赛道: {track}")
+    print(f"{'='*50}")
+    
+    # 0. 创建目录
+    persona_dir = PERSONAS_DIR / name
+    layers_dir  = persona_dir / "layers"
+    corpus_dir  = persona_dir / "corpus"
+    
+    for d in [layers_dir, corpus_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+    print(f"\n[1/5] 目录创建: {persona_dir}")
+    
+    # 1. 账号发现
+    print(f"\n[2/5] 账号发现与验证...")
+    profile_text = ""
+    titles = []
+    comments = ""
+    
+    # 尝试 CDP 采集
+    for port in CDP_PORTS:
+        tabs = list_tabs(port)
+        if not tabs:
+            continue
+        print(f"    端口 {port}: {len(tabs)} tabs")
+        
+        tab_id = new_tab(port)
+        if tab_id:
+            print(f"    新建 tab: {tab_id[:16]}...")
+            profile_text, titles = await fetch_profile_page(tab_id, port, account_keyword)
+            if profile_text:
+                break
+    
+    # 分析提取
+    info = extract_account_info(profile_text)
+    if not titles:
+        titles = extract_video_titles(profile_text)
+    
+    print(f"    账号信息: {info}")
+    print(f"    视频标题: {len(titles)} 条")
+    
+    # 2. 语料分析
+    print(f"\n[3/5] 语料分析与建模...")
+    tags   = extract_tags(titles, profile_text)
+    talks  = extract_catchphrases(titles, profile_text, comments)
+    
+    print(f"    标签: {len(tags)} 个")
+    print(f"    口头禅: {len(talks)} 条")
+    
+    # 3. 生成文件
+    print(f"\n[4/5] 生成角色文件...")
+    
+    # corpus 文件
+    (corpus_dir / "00_profile.md").write_text(
+        f"# 账号基础信息\n\n账号: {account_keyword}\n赛道: {track}\n\n信息: {json.dumps(info, ensure_ascii=False)}\n\n原文:\n{profile_text[:5000]}", encoding="utf-8")
+    
+    (corpus_dir / "01_titles.md").write_text(
+        f"# 视频标题（共{len(titles)}条）\n\n" +
+        '\n'.join([f'- {t}' for t in titles]), encoding="utf-8")
+    
+    (corpus_dir / "02_captions.md").write_text(
+        "# AI字幕/文案\n\n> 待补充：需进入单个视频页面抓取字幕内容", encoding="utf-8")
+    
+    (corpus_dir / "03_comments.md").write_text(
+        f"# 高赞评论\n\n> 待补充：需进入视频详情页抓取评论区\n\n评论数: 0 / 目标30条", encoding="utf-8")
+    
+    (corpus_dir / "04_tags.md").write_text(
+        "# 话题/标签\n\n" +
+        '\n'.join([f'- #{t[0]}（{t[1]}次）' for t in tags[:50]]), encoding="utf-8")
+    
+    (corpus_dir / "05_live.md").write_text(
+        "# 直播连麦语料\n\n> 待补充：需访问直播回放", encoding="utf-8")
+    
+    # L1-L5 文件
+    (layers_dir / "l1_foundations.md").write_text(
+        "# L1 · 三观层\n\n" + build_l1(profile_text, titles, tags), encoding="utf-8")
+    (layers_dir / "l2_foundations.md").write_text(
+        "# L2 · 身份层\n\n" + build_l2(titles, tags, talks), encoding="utf-8")
+    (layers_dir / "l3_foundations.md").write_text(
+        "# L3 · 认知层\n\n" + build_l3(titles, tags), encoding="utf-8")
+    (layers_dir / "l4_foundations.md").write_text(
+        "# L4 · 表达层\n\n" + build_l4(titles, talks), encoding="utf-8")
+    (layers_dir / "l5_foundations.md").write_text(
+        "# L5 · 行为层\n\n" + build_l5(titles, tags), encoding="utf-8")
+    
+    # meta.json
+    meta = build_meta(name, account_keyword, "douyin", track, info, talks)
+    (persona_dir / "meta.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    
+    # 4. 更新 SKILL.md
+    print(f"\n[5/5] 更新 SKILL.md 路由...")
+    keywords = [k.strip() for k in keywords_str.split('/') if k.strip()]
+    
+    # 读取现有 SKILL.md
+    if SKILL_MD.exists():
+        content = SKILL_MD.read_text(encoding="utf-8")
+    else:
+        content = "# SKILL.md\n"
+    
+    # 找路由表最后一行，追加新角色
+    new_line = f"| N | {'/'.join(keywords[:5])} | {name} | {track} |"
+    
+    # 简单追加（后续需人工补充优先级数字）
+    if "| N |" not in content or name not in content:
+        # 在第一个空行或文件末尾追加
+        content += f"\n{new_line}\n"
+        SKILL_MD.write_text(content, encoding="utf-8")
+    
+    # 5. 达标检查
+    print(f"\n{'='*50}")
+    print(f"  采集结果检查")
+    print(f"{'='*50}")
+    checks = [
+        ("视频标题", len(titles), MIN_TITLES, "✅" if len(titles) >= MIN_TITLES else "⚠️"),
+        ("口头禅", len(talks), MIN_TALKS, "✅" if len(talks) >= MIN_TALKS else "⚠️"),
+        ("字幕文案", 0, 50, "🔴"),
+        ("高赞评论", 0, MIN_COMMENTS, "🔴"),
+    ]
+    for label, got, need, icon in checks:
+        status = icon
+        if got >= need: status = f"✅ 达标({got}条)"
+        elif got > 0:   status = f"⚠️ 不足({got}/{need})"
+        else:           status = f"🔴 待采集"
+        print(f"  {status} | {label}")
+    
+    print(f"\n  角色目录: {persona_dir}")
+    print(f"  后续请进入 corpus/ 补充字幕和评论")
+    
+    return {
+        "titles": len(titles),
+        "talks": len(talks),
+        "tags": len(tags),
+        "info": info
+    }
+
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         print(__doc__)
         sys.exit(1)
-
-    name    = sys.argv[1]
-    account = sys.argv[2]
-    track   = sys.argv[3] if len(sys.argv) > 3 else "通用"
-
-    print(f"\n{'='*50}")
-    print(f"创建角色: {name} | 账号: {account} | 赛道: {track}")
-    print(f"{'='*50}\n")
-
-    # 1. CDP 抓取
-    print("[1/5] 抓取抖音账号...")
-    text = fetch_douyin(account)
-
-    # 2. 解析
-    print("[2/5] 解析数据...")
-    data = parse_search(text, account)
-    print(f"  账号: {data['name']}")
-    print(f"  粉丝: {data['fans']} | 获赞: {data['likes']}")
-    print(f"  视频: {len(data['videos'])} 个")
-
-    # 3. 创建文件
-    print("[3/5] 生成角色文件...")
-    pdir, route_kw = create_persona(name, data, track)
-
-    # 4. 更新路由
-    print("[4/5] 更新 SKILL.md...")
-    update_skill(name, track, route_kw)
-
-    # 5. Git
-    print("[5/5] Git 提交推送...")
-    git_push(f"feat: 新增{name}({account}) v1.0.0 - {track}赛道")
-
-    print(f"\n{'='*50}")
-    print(f"Done: {pdir}")
-    print(f"{'='*50}\n")
-
+    
+    name          = sys.argv[1]
+    account_kw    = sys.argv[2]
+    track         = sys.argv[3]
+    keywords_str  = sys.argv[4] if len(sys.argv) > 4 else track
+    
+    asyncio.run(create_persona(name, account_kw, track, keywords_str))
 
 if __name__ == "__main__":
     main()

@@ -6,7 +6,7 @@
   "company": "四川三更教育科技有限公司",
   "secUid": "MS4wLjABAAAA4sQBaLJED6Zalk2SMOSJBpsQIbx0uCXRiAcuTuW3i1jnb_hC7Gw7ZOXoz9kl8fNJ",
   "channel": "douyin",
-  "version": "v2.1.0",
+  "version": "v2.2.0",
   "track": "catering_entrepreneurship",
   "tags": [
     "餐饮",
@@ -32,5 +32,12 @@
     "先打工再创业，别上来就梭哈",
     "止损是智慧，不是失败",
     "脚踏实地的富二代才能守住家业"
-  ]
+  ],
+  "corpus_stats": {
+    "视频标题": 20,
+    "字幕文案": 0,
+    "高赞评论": 0,
+    "口头禅": 7,
+    "语料总量": 20
+  }
 }
