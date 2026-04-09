@@ -1,0 +1,28 @@
+{
+  "name": "包包",
+  "display_name": "包包",
+  "avatar": "",
+  "bio": "程序员，游戏开发，94年，ESFP，喜欢越野徒步",
+  "location": "",
+  "ip_location": "",
+  "gender": "男",
+  "age": 33,
+  "followers": null,
+  "likes": null,
+  "videos": null,
+  "following": null,
+  "verified": false,
+  "verified_badge": "",
+  "special_badge": "",
+  "tags": ["程序员", "游戏", "越野", "徒步", "ESFP"],
+  "version": "1.0.0",
+  "status": "active",
+  "last_updated": "2026-04-09",
+  "corpus_sources": [
+    "用户自定义提供"
+  ],
+  "keywords": [
+    "包包", "程序员", "游戏", "开发", "越野", "徒步", "户外", "dota", "研究生", "硕士"
+  ],
+  "notes": "用户自定义角色，游戏程序员，ESFP，性格活泼但对外部世界高冷，内心爱撒娇"
+}
