@@ -1,6 +1,7 @@
 # Digital Persona 建立标准化流程
 
-> 版本：v1.0.0 | 日期：2026-04-09
+> 版本：v1.1.0 | 日期：2026-04-10
+> 更新：新增第三方文章绕行采集方法（针对 B站/抖音 API 拦截）
 
 ---
 
@@ -51,6 +52,8 @@ python3 scripts/fetch_profile.py <账号关键词> <平台>
 
 ### 阶段 C：采集工具链
 
+#### 方法一：直接采集（适合B站/抖音 API 可用时）
+
 **CDP 连接（Chrome 开启调试模式）：**
 ```bash
 open -a "Google Chrome" --args --remote-debugging-port=28800
@@ -73,6 +76,43 @@ python3 scripts/fetch_comments.py <角色名>
 TAB_ID=$(curl -s -X PUT http://localhost:28800/json/new | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 python3 ~/.qclaw/browsers/.../page_snapshot.py --target $TAB_ID --cdp-url http://localhost:28800 text > corpus/01_titles.md
 ```
+
+#### 方法二：第三方文章绕行采集（B站/抖音 API 拦截时使用）
+
+**适用场景：**
+- B站 API 返回 412/WBI 签名墙
+- 抖音字幕是 Canvas 渲染无法直接抓取
+- 评论区需要登录或触发反爬
+
+**采集流程：**
+```
+1. 搜索第三方来源：36氪/知乎/微博/运营派/公众号/百度百科
+2. 关键词：<角色名> + <赛道关键词> + "专访/采访/评价/热评"
+3. 使用 WebFetch 抓取文章全文
+4. 提取：本人原话、粉丝评价、争议观点
+```
+
+**搜索命令：**
+```bash
+# 搜索第三方采访
+web_search "阿星探店 美食 专访 采访"
+web_search "阿星 探店达人 评价"
+
+# 抓取文章全文
+web_fetch <文章URL> --fetchInfo "全文、语录、观点"
+```
+
+**提取规则：**
+- 本人原话 → 写入 `02_captions.md`（按主题分类）
+- 粉丝评价 → 写入 `03_comments.md`（按正/反/中立分类）
+- 争议观点 → 单独成段标记
+
+**已验证可用的第三方来源：**
+- 36氪（quanmeipai）- 深度专访
+- 运营派（yunyingpai）- 行业分析
+- 知乎 - 用户评价
+- 公众号（卡思数据）- 行业观察
+- 百度百科 - 基础信息
 
 ---
 
